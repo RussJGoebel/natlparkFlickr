@@ -14,7 +14,7 @@ A data frame with 3276 rows and 3 variables.
 }
 }
 \source{
-Flickr. (2019). Retrieved October, 2019, fromhttps://flickr.com/
+Flickr. (2019). Retrieved October, 2019, from https://flickr.com/
 }
 \usage{
 park_visitation

@@ -3,7 +3,7 @@
 #' A time series representing the popularity of flickr in the United States, as measured in user-days. Here, user-days count the number of unique users posting on flickr on a given day.
 #'
 #' @format A time series object with 156 observations.
-#' @source Flickr. (2019). Retrieved October, 2019, fromhttps://flickr.com/
+#' @source Flickr. (2019). Retrieved October, 2019, from https://flickr.com/
 #'
 #'
 #'
@@ -25,7 +25,7 @@
 #'   \item{pud}{Flickr photo-user-days (pud).  Here, photo-user-days count the number of unique users posting a photo on flickr on a given day from within the boundaries of a given national park. }
 #' }
 #'
-#' @source Flickr. (2019). Retrieved October, 2019, fromhttps://flickr.com/
+#' @source Flickr. (2019). Retrieved October, 2019, from https://flickr.com/
 
 
 "park_visitation"

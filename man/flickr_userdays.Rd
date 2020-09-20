@@ -8,7 +8,7 @@
 A time series object with 156 observations.
 }
 \source{
-Flickr. (2019). Retrieved October, 2019, fromhttps://flickr.com/
+Flickr. (2019). Retrieved October, 2019, from https://flickr.com/
 }
 \usage{
 flickr_userdays

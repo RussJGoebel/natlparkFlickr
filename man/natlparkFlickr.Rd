@@ -9,8 +9,9 @@ This package contains two datasets: flickr_userdays stores a time series of nati
 }
 \section{natlparkFlickr Datasets}{
 
- \itemize
+ \itemize{
  \item{\code{flickr_userdays}}: A time series of national level user-days for Flickr between 2005 and 2018.
- `\item{\code{park_visitation}}: A data frame storing Flickr photo-user-days associated with twenty popular national parks in the United States.
+ \item{\code{park_visitation}}: A data frame storing Flickr photo-user-days associated with twenty popular national parks in the United States.
+ }
 }
 

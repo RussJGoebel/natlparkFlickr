@@ -35,10 +35,10 @@
 #' This package contains two datasets: flickr_userdays stores a time series of national level user-days for Flickr between 2005 and 2018, and park_visitation stores Flickr photo-user-days associated with twenty popular national parks in the United States. Here, user-days counts the number of unique Flickr users in a day, and photo-user-days counts the number of unique users who post a photo on Flickr from within the boundary of a given park.
 #'
 #' @section natlparkFlickr Datasets:
-#'  \itemize
+#'  \itemize{
 #'  \item{\code{flickr_userdays}}: A time series of national level user-days for Flickr between 2005 and 2018.
 #'  \item{\code{park_visitation}}: A data frame storing Flickr photo-user-days associated with twenty popular national parks in the United States.
-#'
+#'  }
 #' @docType package
 #' @name natlparkFlickr
 NULL

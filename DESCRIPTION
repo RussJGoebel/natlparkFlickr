@@ -1,0 +1,12 @@
+Package: natlparkFlickr
+Type: Package
+Title: Datasets for national and park-level Flickr usage
+Version: 0.0.0.9000
+Authors@R: person("Russell","Goebel", email = "rgoebel@bu.edu", role = c("aut","cre"))
+Description: This package contains two datasets: flickr_userdays stores a time series of national level user-days for Flickr between 2005 and 2018, and park_visitation stores Flickr photo-user-days associated with twenty popular national parks in the United States. Here, user-days counts the number of unique Flickr users in a day, and photo-user-days counts the number of unique users who post a photo on Flickr from within the boundary of a given park.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Depends: 
+    R (>= 2.10)
+RoxygenNote: 7.1.0

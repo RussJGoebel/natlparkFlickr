@@ -1,0 +1,805 @@
+---
+title: "figures"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{figures}
+  %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,fig.height =5, fig.align = "center"
+)
+```
+
+The goal of this vignette is to reproduce figures in *Modeling and Forecasting Percent Changes in National Park Visitation Using Social Media* using the VisitorCounts package. Figures are designed to be saved as png files, so some may not render correctly in this html file.
+
+
+```{r setup, message = FALSE, warning = FALSE}
+library(natlparkAnalysis)
+library(VisitorCounts)
+library(gtrendsR)
+library(tidyverse) 
+library(Rssa)
+
+# Global Parameters
+save_plots =  F # indicates that plots will be rebuilt and saved. If True, output of knit may look funny.
+rebuild = F # This will take a while to run. Reruns all models.
+
+table_format <- ifelse(save_plots,"latex","html") # if latex, output can be copy-pasted into latex documents to produce tables
+
+#Import data ---------------------
+data(park_visitation)
+
+data(flickr_userdays)
+log_flickr_userdays <- log(flickr_userdays)
+
+data("gtrends_popularity")
+log_gtrends_popularity <- log(gtrends_popularity)
+
+#gtrends_popularity <- gtrends(keyword = "flickr", time = "2005-01-01 2017-12-31")$interest_over_time$hits
+#gtrends_popularity <- ts(gtrends_popularity,start = 2005, freq = 12)
+#log_gtrends_popularity <- log(gtrends_popularity)
+# --------------------------------
+```
+
+```{r}
+build_plot <- function(plotfunction, save = F,filename = "name.png",width = 1600, height = 1200,cex.main = 2, cex.axis = 2, cex.lab = 2, mfrow = c(1,1), mar = c(5,4,4,2)+2,cex = 1,mgp = c(3,1,0),...){
+  
+  file_dir <- "plots/"
+  filename <- paste(file_dir,filename,sep = "")
+  
+  if(save){
+  png(filename = filename,
+    width = width,
+    height = height,...)
+
+   par(cex.axis = cex.axis, cex.lab = cex.lab, mfrow = mfrow,mar = mar, cex.main = cex.main,mgp = mgp, cex = cex)
+  }
+  plotfunction()
+  if(save){dev.off()}
+}
+
+```
+
+
+## Sliding window model evaluation
+
+To obtain the sliding window results that appear in table 3, as well as corresponding results for Google Trends, the function `sliding_window_VisitorCounts()` can be used. Due to computation time, current results are saved in .rda files. Code to produce the datasets stored in these files has been commented out.
+
+```{r sliding_window, message = FALSE}
+# These datasets have been saved as .rda files.
+rebuild = FALSE
+
+if(rebuild){
+
+lag_method = "cross-correlation"
+parameter_estimates = "separate" #since 'separate' uses the differenced series to estimate beta, we expect the best forecasts for the nps model.
+
+park_diff_mat1 <- sliding_window_VisitorCounts(park_visitation,log_flickr_userdays, lag_method = lag_method, model = "pud_only", trace = T)
+park_diff_mat2a <- sliding_window_VisitorCounts(park_visitation,log_flickr_userdays,lag_method = lag_method, model = "nps_assisted", trace = T, parameter_estimates = parameter_estimates)
+park_diff_mat3 <- sliding_window_VisitorCounts(park_visitation,log_flickr_userdays,lag_method = lag_method, model = "nps_only", trace = T)
+
+g_park_diff_mat1 <- sliding_window_VisitorCounts(park_visitation,log_gtrends_popularity,lag_method = lag_method, model = "pud_only", trace = T)
+g_park_diff_mat2 <- sliding_window_VisitorCounts(park_visitation,log_gtrends_popularity,lag_method = lag_method, model = "nps_assisted", trace = T)
+g_park_diff_mat3 <- sliding_window_VisitorCounts(park_visitation,log_gtrends_popularity,lag_method = lag_method, model = "nps_only", trace = T)
+
+sliding_window_results <- list(
+  pud_only_UD = park_diff_mat1,
+  nps_assisted_UD = park_diff_mat2,
+  nps_only_UD = park_diff_mat3,
+  pud_only_gtrends = g_park_diff_mat1,
+  nps_assisted_gtrends = g_park_diff_mat2,
+  nps_only_gtrends = g_park_diff_mat3
+)
+
+usethis::use_data(sliding_window_results, overwrite = TRUE)
+
+
+}
+#-----------------------------------------------
+
+
+
+data(sliding_window_results)
+
+park_diff_mat1 <- sliding_window_results$pud_only_UD
+park_diff_mat2 <- sliding_window_results$nps_assisted_UD
+park_diff_mat3 <- sliding_window_results$nps_only_UD
+
+g_park_diff_mat1 <- sliding_window_results$pud_only_gtrends
+g_park_diff_mat2 <- sliding_window_results$nps_assisted_gtrends
+g_park_diff_mat3 <- sliding_window_results$nps_only_gtrends
+
+#-----------------------------------------------
+
+```
+
+## Parameter Estimates
+
+To obtain results pertaining to parameter estimates, the function `generate_parameter_df()` can be used.
+
+```{r parameter_estimates, message = F}
+if(rebuild){
+
+parameter_df <- generate_parameter_df(park_visitation, log_flickr_userdays, use_ref_series = F)
+g_parameter_df <- generate_parameter_df(park_visitation, log_gtrends_popularity, use_ref_series = F)
+nps_parameter_df <- generate_parameter_df(park_visitation, log_flickr_userdays, use_ref_series = T, parameter_estimates = "separate")
+
+# For Table 5
+options(scipen = 1000)
+nps_parameter_joint_df <- generate_parameter_df(park_visitation, log_flickr_userdays, use_ref_series = TRUE, parameter_estimates = "joint")
+
+full_parameter_df <- data.frame(park = unique(park_visitation$park),
+                     lag_MSE = -nps_parameter_joint_df$lag_MSE, 
+                     lag_Rank = -nps_parameter_joint_df$lag_Rank,
+                     true_beta = nps_parameter_joint_df$beta,
+                     constant = nps_parameter_joint_df$constant,
+                     ci1_cFi = 1/nps_parameter_joint_df$constant
+)
+
+
+usethis::use_data(parameter_df, overwrite = TRUE)
+usethis::use_data(g_parameter_df, overwrite = TRUE)
+usethis::use_data(nps_parameter_df, overwrite = TRUE)
+usethis::use_data(nps_parameter_joint_df, overwrite = TRUE)
+usethis::use_data(full_parameter_df, overwrite = TRUE)
+
+}
+
+data(parameter_df)
+data(g_parameter_df)
+data(nps_parameter_df)
+data(nps_parameter_joint_df)
+data(full_parameter_df)
+
+beta_lm <- nps_parameter_df$beta
+beta_fisher <- parameter_df$beta
+```
+
+## Tables
+
+### Table 2
+
+```{r table_2}
+lag_df <- data.frame(park = unique(park_visitation$park),
+                     lag_cc = -parameter_df$lag_cc)
+lag_df <- t(lag_df)
+row.names(lag_df) <- c("Park","\\hat{L}_{F,i}^{CCF}")
+
+knitr::kable(lag_df, format = table_format, row.names = T,digits = 3, escape = F)
+
+```
+
+### Table 3
+```{r table_3}
+
+#Function to highlight cells given a condition and round them
+format_cells <- function(x,uni_error,pud_error,round_to = 3){
+  
+  x = ifelse(pud_error <= uni_error+0.1,paste("\\cellcolor[gray]{.8}",round(x,round_to)),round(x,round_to))
+  x
+}
+
+
+error_df <- data.frame(
+  park = unique(park_visitation$park),
+  univariate_RMSE = park_diff_mat3$park_RMSE_diff_mat[,1],
+  pud_RMSE = park_diff_mat1$park_RMSE_diff_mat[,1],
+  univariate_MAE = park_diff_mat3$park_MAE_diff_mat[,1],
+  pud_MAE = park_diff_mat1$park_MAE_diff_mat[,1]
+)
+
+
+
+error_df <- error_df %>% arrange(univariate_RMSE) %>% transmute(park = park, 
+                                    univariate_RMSE1 = format_cells(univariate_RMSE,univariate_RMSE,pud_RMSE,3),
+                                    pud_RMSE1 = format_cells(pud_RMSE,univariate_RMSE,pud_RMSE,3),
+                                    univariate_MAE1 = format_cells(univariate_MAE,univariate_MAE,pud_MAE,3),
+                                    pud_MAE1 = format_cells(pud_MAE,univariate_MAE,pud_MAE,3))
+
+
+
+row.names(error_df) <- c()
+
+error_df  %>% knitr::kable(col.names = c("Park","Univariate RMSE", "PUD RMSE", "Univariate MAE", "PUD MAE"), format = table_format, escape = FALSE) 
+
+```
+
+### Table 4
+
+```{r}
+g_lag_df <- data.frame(park = unique(park_visitation$park),
+                     g_lag_CCF = -g_parameter_df$lag_cc, 
+                     lag_CCF = -parameter_df$lag_cc,
+                     lag_CCF_diff = -(g_parameter_df$lag_cc-parameter_df$lag_cc)
+                    )
+
+knitr::kable(g_lag_df,
+             col.names = c("Park", "Gtrends Lag (CCF)", "UD Lag (CCF)","Difference (CCF)"), format = table_format)
+```
+
+### Table 5
+
+```{r}
+
+
+ktable <- full_parameter_df %>% transmute(park = park,
+                                          b = round(true_beta,3),
+                                       c = round(constant*10^-8,3),
+                                       cc = round(ci1_cFi*10^8,3))
+
+knitr::kable(ktable,col.names = c("Park","Beta","c_i*10^-8","c_{i,1}c_{F,i}*10^8"), format = table_format)
+```
+
+
+## Figures 
+
+### Figure 1
+
+
+```{r}
+
+NPS_Decomposition <- function(){
+
+options(scipen = 1000)
+park <- "YELL"
+nps_ts <- ts(park_visitation[park_visitation$park == park,]$nps, start = 2005, frequency = 12)
+
+nps_decomp <- auto_decompose(nps_ts, num_trend_components = 1)
+
+plot(nps_decomp, type = "classical", lwd = 2)
+
+}
+
+build_plot(NPS_Decomposition,filename = "NPS_Decomposition.png", save = save_plots, cex.main = 4, cex.lab = 3, height = 1000)
+
+
+```
+
+### Figure 2
+
+
+```{r}
+
+PUD_Decomposition <- function(){
+options(scipen = 1000)
+park <- "YELL"
+pud_ts <- ts(park_visitation[park_visitation$park == park,]$pud, start = 2005, frequency = 12)
+pud_decomp <- auto_decompose(pud_ts)
+
+plot(pud_decomp, type = "classical", lwd = 2)
+
+}
+
+build_plot(PUD_Decomposition,filename = "PUD_Decomposition.png", save = save_plots, cex.main = 4, cex.lab = 3, height = 1000)
+
+
+```
+
+### Figure 3
+
+
+```{r}
+
+LogNPS_Decomposition <- function(){
+options(scipen = 1000)
+park <- "YELL"
+pud_ts <- ts(park_visitation[park_visitation$park == park,]$pud, start = 2005, frequency = 12)
+
+nps_ts <- ts(park_visitation[park_visitation$park == park,]$nps, start = 2005, frequency = 12)
+nps_ts <- log(nps_ts)
+
+pud_decomp <- auto_decompose(pud_ts)
+nps_decomp <- auto_decompose(nps_ts, num_trend_components = 1)
+
+plot(nps_decomp, type = "classical", lwd = 2)
+
+}
+
+build_plot(LogNPS_Decomposition,filename = "LogNPS_Decomposition.png", save = save_plots, cex.main = 4, cex.lab = 3, height=  1000)
+
+
+```
+
+### Figure 4
+
+
+```{r}
+
+LogPUD_Decomposition <- function(){
+options(scipen = 1000)
+park <- "YELL"
+pud_ts <- ts(park_visitation[park_visitation$park == park,]$pud, start = 2005, frequency = 12)
+pud_ts <- log(pud_ts)
+
+
+pud_decomp <- auto_decompose(pud_ts)
+
+plot(pud_decomp, type = "classical", lwd = 2)
+
+}
+
+build_plot(LogPUD_Decomposition,filename = "LogPUD_Decomposition.png", save = save_plots, cex.main = 4, cex.lab = 3, height = 1000)
+
+
+```
+
+### Figure 5
+
+```{r, fig.width = 7,fig.height =5, fig.align = "center"}
+# Figure 8  ---------------------------------------------------------------------
+
+ROMO_trend_comparison_flickr_plot <- function(){
+
+  park <- "ACAD"
+  pud_ts <- ts(park_visitation[park_visitation$park == park,]$pud, start = 2005, frequency = 12)
+  pud_ts <- log(pud_ts)
+  
+  nps_ts <- ts(park_visitation[park_visitation$park == park,]$nps, start = 2005, frequency = 12)
+  nps_ts <- log(nps_ts)
+  
+  popularity_proxy <- log_flickr_userdays
+  
+  vm <- visitation_model(pud_ts,popularity_proxy, num_trend_components = 2, ref_series = nps_ts)
+  
+  # Center trend components
+
+  
+  usage_trend <- vm$onsite_usage_decomposition$reconstruction$Trend
+  c_usage_trend <- usage_trend
+  
+  proxy_trend <- vm$proxy_decomposition$reconstruction$Trend
+  c_proxy_trend <- proxy_trend-max(proxy_trend)+max(usage_trend)
+  
+  nps_trend <- auto_decompose(nps_ts, num_trend_components = 1)$reconstruction$Trend
+  c_nps_trend <- nps_trend-mean(nps_trend)+mean(usage_trend)
+  
+  plot(c_proxy_trend, col = "red",
+       ylab = "Trend (vertically aligned)", lwd = 3)
+  lines(c_usage_trend, col = "black", lwd = 3)
+  lines(c_nps_trend,col = "blue",lty =2, lwd = 3)
+  legend("bottom", c("PUD Trend", "Flickr UD Trend","NPS Trend"), lwd = c(3,3,3), col = c("black","red", "blue"), lty = c(1,1,2), cex = 1.5)
+
+}
+
+build_plot(ROMO_trend_comparison_flickr_plot,filename = "ACAD_trend_v_Userdays_trend.png",save = save_plots, cex = 1.5)
+
+
+```
+
+### Figure 6
+
+```{r}
+
+beta_justification <- function(){
+parks <- c("YELL","YOSE","GRSM","DEVA")
+par(mfrow = c(2,2))
+for(i in seq_along(parks)){
+  park <- parks[i]
+  pud_ts <- ts(park_visitation[park_visitation$park == park,]$pud, start = 2005, frequency = 12)
+  pud_ts <- log(pud_ts)
+  
+  nps_ts <- ts(park_visitation[park_visitation$park == park,]$nps, start = 2005, frequency = 12)
+  nps_ts <- log(nps_ts)
+  
+  seasonality_pud <- auto_decompose(pud_ts)$reconstruction$Seasonality
+  seasonality_nps <- auto_decompose(nps_ts)$reconstruction$Seasonality
+  
+  lb <- min(c(seasonality_pud,seasonality_nps))
+  ub <- max(c(seasonality_pud,seasonality_nps))
+  
+  plot(seasonality_nps, ylim = c(lb,ub), lwd = 2, ylab = "Seasonality", main = paste("Seasonal Components for",park))
+  lines(seasonality_pud, col = "red", lwd = 2)
+}
+
+}
+
+build_plot(beta_justification,"beta_justification.png",save = save_plots, height = 1000)
+
+
+```
+
+### Figure 7
+
+```{r, fig.width = 7,fig.height =5, fig.align = "center"}
+
+
+beta_evidence_plot <- function(){
+  mod <- lm(beta_lm~beta_fisher-1)
+  plot(beta_lm,beta_fisher,
+       main = paste("Fisher Z transformation on Lag 12 ACF vs","Beta Estimate"),
+       ylab = "Beta",
+       xlab = "Transformed Lag 12 ACF",
+       cex = 1.75,
+       pch = 16)
+ 
+  abline(a = 0, coef(mod)[1], lwd = 2)
+  text(0.15,0.5, labels = paste("Slope = ",round(coef(mod),4),"\n","R-squared = ",round(summary(mod)$r.squared,4)), cex = 1.5)
+}
+
+build_plot(beta_evidence_plot,filename = "fisher_Z_beta.png",save = save_plots, cex =  1.5)
+
+
+```
+
+### Figure 8
+
+
+```{r}
+
+beta_justification <- function(){
+parks <- c("YELL","YOSE","GRSM","DEVA")
+par(mfrow = c(2,2))
+for(i in seq_along(parks)){
+  park <- parks[i]
+  pud_ts <- ts(park_visitation[park_visitation$park == park,]$pud, start = 2005, frequency = 12)
+  pud_ts <- log(pud_ts)
+  
+  
+  nps_ts <- ts(park_visitation[park_visitation$park == park,]$nps, start = 2005, frequency = 12)
+  nps_ts <- log(nps_ts)
+  
+  seasonality_pud <- auto_decompose(pud_ts)$reconstruction$Seasonality
+  seasonality_nps <- auto_decompose(nps_ts)$reconstruction$Seasonality
+  
+  beta_index <- which(park==unique(park_visitation$park))
+  beta <- beta_fisher[beta_index]
+  
+  scaled_seasonality_pud <- seasonality_pud*beta
+  
+  lb <- min(c(seasonality_pud,seasonality_nps))
+  ub <- max(c(seasonality_pud,seasonality_nps))
+  
+  plot(seasonality_nps, ylim = c(lb,ub), lwd = 2, ylab = "Seasonality", main = paste("Scaled Seasonal Components for",park))
+  lines(scaled_seasonality_pud, col = "red", lwd = 2)
+}
+
+}
+
+build_plot(beta_justification,"beta_scaled.png",save = save_plots, height = 1000)
+
+
+```
+
+
+
+
+
+
+
+
+### Figure 10
+
+```{r, fig.width = 7,fig.height =5, fig.align = "center", message = FALSE}
+
+forecast_plots <- function(){
+
+  figure_15_parks <- c("YELL","YOSE","GRSM","DEVA")
+  window <- 21
+  num_windows <- 48
+  trend_proxy <- log_flickr_userdays
+  par(mfrow = c(2,2))
+
+  for(j in 1:length(figure_15_parks)){
+
+  
+  
+    park <- figure_15_parks[j]
+    pud_ts <- ts(park_visitation[park_visitation$park == park,]$pud, start = 2005, freq = 12)
+    pud_ts <- log(pud_ts)
+  
+    nps_ts <- ts(park_visitation[park_visitation$park == park,]$nps, start = 2005, freq = 12)
+    nps_ts <- log(nps_ts)
+  
+    n_ahead <- 12
+  
+  
+    begin_year <- 2005
+  
+    i <- window
+  
+      pud_window <- window(pud_ts, start = begin_year+(i-1)/12,end = begin_year+(156-n_ahead-num_windows+i-1)/12)
+      nps_window <- window(nps_ts, start = begin_year+(i-1)/12,end = begin_year+(156-n_ahead-num_windows+i-1)/12)
+      nps_true_values <- window(nps_ts, start = begin_year+(156-n_ahead-num_windows+i-1)/12, end = begin_year+(156-n_ahead-num_windows+i+11)/12)
+      trend_proxy_window <- window(trend_proxy, start = begin_year+(i-1)/12,end = begin_year+(156-n_ahead-num_windows+i-1)/12)
+      true_differences <- diff(nps_true_values)
+      
+  
+      model1_fit <- visitation_model(pud_window,trend_proxy_window)
+      forecasted_differences1 <- predict(model1_fit,n_ahead = 12, difference = TRUE,past_observations = "fitted")$forecasts
+  
+      absdiff1 <- abs(forecasted_differences1-true_differences)
+  
+  
+      model2_fit <- visitation_model(pud_window,trend_proxy_window,ref_series = nps_window)
+      forecasted_differences2 <- predict(model2_fit,n_ahead = 12, difference = TRUE,past_observations = "reference", only_new = T)$forecasts
+ 
+      absdiff2 <- abs(forecasted_differences2-true_differences)
+  
+      lb <- min(c(true_differences,forecasted_differences1))
+      ub <- max(c(true_differences,forecasted_differences1))
+  
+      title <- paste("True and forecasted change in log NPS for",park, ", window ",window, sep = "")
+  
+      plot(true_differences,
+           ylim = c(lb,ub),
+           lwd = 2,
+           main = title,
+           ylab = "Differenced Value"
+           )
+      lines(forecasted_differences1, col = "red", lwd = 2)
+ 
+  }
+
+}
+
+build_plot(forecast_plots,filename = "forecast_plots.png", save = save_plots, cex.main = 2, height = 1000)
+
+
+```
+
+### Figure 11
+
+```{r, fig.width = 7, fig.height = 5}
+
+RMSE_MAE_boxplots <- function(){
+
+par(mfrow = c(1,2))  
+  
+lb = min(c(park_diff_mat2$park_RMSE_diff_mat,park_diff_mat2$park_MAE_diff_mat))
+ub = max(c(park_diff_mat2$park_RMSE_diff_mat,park_diff_mat2$park_diff_mat1$park_MAE_diff_mat))
+
+
+boxplot(park_diff_mat2$park_RMSE_diff_mat,
+        main = "Root-Mean-Square Error in n-ahead forecasts", 
+        xlab = "n-ahead forecast",
+        ylab = "RMSE", 
+        ylim = c(lb,ub))
+boxplot(park_diff_mat2$park_MAE_diff_mat, 
+        main = "Mean Absolute Error in n-ahead forecasts",
+        xlab = "n-ahead forecast",
+        ylab = "MAE",
+        ylim = c(lb, ub))
+
+}
+
+build_plot(RMSE_MAE_boxplots,filename = "RMSE_MAE_boxplots.png",save = save_plots, height = 600)
+
+```
+
+### Figure 12
+
+```{r, fig.width = 7, fig.height = 5}
+
+MR_plot <- function(){
+
+  MRRMSE <- colMeans(park_diff_mat1$park_RMSE_diff_mat/park_diff_mat2$park_RMSE_diff_mat)
+  MRMAE <- colMeans(park_diff_mat1$park_MAE_diff_mat/park_diff_mat2$park_MAE_diff_mat)
+  
+  lb <- min(c(MRRMSE,MRMAE))
+  ub <- max(c(MRRMSE,MRMAE))
+ 
+  plot(MRRMSE, type = "l",
+       ylim = c(lb,ub),
+       ylab = "Mean Ratio",
+       xlab = "Month-ahead forecast", lwd = 2)
+  lines(MRMAE, type = "l", lty = 2, lwd = 2)
+ 
+
+}
+
+build_plot(MR_plot, filename = "MR_plot.png",save = save_plots, pointsize = 18)
+
+```
+
+
+### Figure 13
+
+```{r, fig.width = 7, fig.height = 5}
+error_df <- data.frame(
+  park = unique(park_visitation$park),
+  univariate_RMSE = park_diff_mat3$park_RMSE_diff_mat[,1],
+  pud_RMSE = park_diff_mat1$park_RMSE_diff_mat[,1],
+  univariate_MAE = park_diff_mat3$park_MAE_diff_mat[,1],
+  pud_MAE = park_diff_mat1$park_MAE_diff_mat[,1]
+)
+
+
+Closest_Furthest_PUD_NPS_RMSE <- function(){
+  
+  labels <- c("(Strongest compared to univariate NPS)",
+              "(Second strongest compared to univariate NPS)",
+              "(Weakest compared to univariate NPS)",
+              "(Second weakest compared to univariate NPS)")
+  
+  diff_error_df <- error_df %>% mutate(RMSE_difference = pud_RMSE-univariate_RMSE,
+                      MAE_difference = pud_MAE-univariate_MAE) %>%
+    arrange(RMSE_difference)
+  
+  top2_parks <- as.character(diff_error_df$park[c(1,2)])
+  bottom2_parks <- as.character(diff_error_df$park[c(dim(diff_error_df)[1],dim(diff_error_df)[1]-1)])
+  parks <- c(top2_parks,bottom2_parks)
+  
+  par(mfrow = c(2,2))
+  for(i  in seq_along(parks)){
+    park <- parks[i]
+    plot(park_visitation[park_visitation$park == park,]$nps, type = "l",
+         main = paste(park,labels[i]),
+         ylab = "NPS")
+    
+  }
+
+}
+
+build_plot(Closest_Furthest_PUD_NPS_RMSE,filename = "Closest_Furthest_PUD_NPS_RMSE.png",save = save_plots)
+
+```
+
+
+### Figure 14
+
+```{r}
+
+yellowstone_plot <- function(){
+
+park <- "YELL"
+
+pud_ts <- pud_ts <- ts(park_visitation[park_visitation$park == park,]$pud, start = 2005, frequency = 12)
+pud_ts <- log(pud_ts)
+
+plot(pud_ts,
+     main = "Log PUD for Yellowstone",
+     ylab = "Log PUD",
+     lwd = 3,
+     cex = 2)
+}
+
+build_plot(yellowstone_plot, filename = "Log_PUD_Yell.png", save = save_plots, cex = 1.5)
+
+```
+
+
+
+### Figure 17
+
+```{r, fig.width = 7,fig.height =5, fig.align = "center"}
+ROMO_trend_comparison_gtrends_plot <- function(){
+  
+  park <- "ACAD"
+  pud_ts <- ts(park_visitation[park_visitation$park == park,]$pud, start = 2005, frequency = 12)
+  pud_ts <- log(pud_ts)
+  
+  nps_ts <- ts(park_visitation[park_visitation$park == park,]$nps, start = 2005, frequency = 12)
+  nps_ts <- log(nps_ts)
+  
+  popularity_proxy <- log_gtrends_popularity
+  
+  vm <- visitation_model(pud_ts,popularity_proxy, num_trend_components = 2, ref_series = nps_ts)
+  
+  # Center trend components
+
+  
+  usage_trend <- vm$onsite_usage_decomposition$reconstruction$Trend
+  c_usage_trend <- usage_trend
+  
+  proxy_trend <- vm$proxy_decomposition$reconstruction$Trend
+  c_proxy_trend <- proxy_trend-max(proxy_trend)+max(usage_trend)
+  
+  nps_trend <- auto_decompose(nps_ts, num_trend_components = 1)$reconstruction$Trend
+  c_nps_trend <- nps_trend-mean(nps_trend)+mean(usage_trend)
+  
+  plot(c_proxy_trend, col = "red",
+       ylab = "Trend (vertically aligned)", lwd = 3)
+  lines(c_usage_trend, col = "black", lwd = 3)
+  lines(c_nps_trend,col = "blue",lty =2, lwd = 3)
+  legend("bottom", c("PUD Trend", "Flickr UD Trend","NPS Trend"), lwd = c(3,3,3), col = c("black","red", "blue"), lty = c(1,1,2), cex = 1.5)
+}
+
+build_plot(ROMO_trend_comparison_gtrends_plot,filename = "ACAD_trend_v_gtrends_trend.png",save = save_plots,cex = 1.5)
+
+```
+
+
+
+
+
+
+
+
+
+## Additional Appendix Plots
+
+### Figure 18
+
+```{r, fig.width = 7,fig.height =5, fig.align = "center"}
+# Appendix Plots
+
+
+gtrends_v_flickr_lags <- function(){
+
+#plot1 ----
+
+  
+  
+  m1 <- lm(g_parameter_df$lag_cc~parameter_df$lag_cc)
+  sm1 <- summary(m1)
+  m1_r2 <- sm1$r.squared
+  c1 = sm1$coefficients[1]; c2 = sm1$coefficients[2]
+  
+  
+  
+  plot(g_parameter_df$lag_cc~parameter_df$lag_cc,
+       main = "CCF-criterion lags using Google Trends and National-level Flickr UD",
+       ylab = expression(paste(hat("L")["G"]^"CCF")),
+       xlab = expression(paste(hat("L")["F"]^"CCF")),
+       cex = 2,
+       pch = 16)
+  abline(m1)
+  
+  # text details for legend
+  r1 = vector("expression",2)
+  r1[1] = substitute(expression(italic(R)^2 == MYVALUE),
+                     list(MYVALUE = format(m1_r2,dig=3)))[2]
+  r1[2] = substitute(expression(hat(L)["G"]^"CCF" == CONSTANT1+CONSTANT2*" "*hat(L)["F"]^"CCF"),
+                     list(CONSTANT1 = format(c1,dig=3),
+                          CONSTANT2 = format(c2, dig = 3, justify = "left")))[2]
+  legend("topleft", legend = r1, bty = "n",cex = c(2))
+  
+}
+
+build_plot(gtrends_v_flickr_lags,filename = "gtrends_v_flickr_lags.png",save = save_plots,mar = c(5,4,4,2)+5, mgp = c(5,1,0), cex.main = 3)
+
+```
+
+### Figure 19
+
+```{r, fig.width = 7,fig.height =5, fig.align = "center"}
+
+Gtrends_ratio <- function(){
+  par(mfrow = c(1,2))
+  boxplot(park_diff_mat1$park_RMSE_diff_mat/g_park_diff_mat1$park_RMSE_diff_mat, main = "Flickr User-days RMSE / Google Trends RMSE", xlab = "n-ahead forecast", ylab = "RMSE")
+  boxplot(park_diff_mat1$park_MAE_diff_mat/g_park_diff_mat1$park_MAE_diff_mat, main  = " Flickr User-days MAE / Google Trends MAE ", xlab = "n-ahead forecast", ylab = "MAE")
+}
+
+build_plot(Gtrends_ratio, filename = "Gtrends_ratio.png", save = save_plots, width = 1600, height = 600)
+
+```
+
+### Figure 19
+
+```{r}
+
+scaled_constant_plots <- function(){
+demo_parks <- c("GRSM","YELL","YOSE","DEVA")
+par(mfrow = c(2,2))
+for(i in seq_along(demo_parks)){
+park <- demo_parks[[i]]
+
+scaling <- full_parameter_df[full_parameter_df$park == park,"ci1_cFi"]
+
+ud_trend <- auto_decompose(flickr_userdays)$reconstruction$Trend
+
+scaled_ud_trend <- ud_trend*scaling
+pud_nps_ratio <- park_visitation[park_visitation$park == park,]$pud/ park_visitation[park_visitation$park == park,]$nps
+pud_nps_ratio <- ts(pud_nps_ratio, start = time(scaled_ud_trend)[1], frequency = frequency(scaled_ud_trend))
+
+plot(pud_nps_ratio, main = bquote("P"["i,t"]*"/N"["i,t"]*" and "*"c"["i,1"]*"c"["F,i"]*"F"["i,t"]*" for "*.(park)),
+     ylab = "Value", lwd = 2)
+lines(scaled_ud_trend, col = "red", lwd = 2)
+legend("topleft",c("Scaled UD Trend","PUD / NPS"), lty = c(1,1), col = c("black","red"), lwd = c(2,2), cex = 2)
+}
+}
+
+build_plot(scaled_constant_plots,filename = "park_constant_plots.png",save = save_plots, cex.main = 3)
+
+```
+
+
+
+

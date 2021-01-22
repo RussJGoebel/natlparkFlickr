@@ -1,0 +1,127 @@
+---
+title: "Constants and Proportions"
+author: "Russell Goebel"
+date: "7/29/2020"
+output: 
+  html_document:
+    toc: true
+---
+
+The goal of this document is to present values related to the constant parameter $c_i$ in the model.
+
+```{r, message = F, warning = F}
+
+library(VisitorCounts)
+library(natlparkAnalysis)
+library(dplyr)
+
+data(park_visitation)
+data(flickr_userdays)
+
+log_flickr_userdays <- log(flickr_userdays)
+
+build_plot <- function(plotfunction, save = F,filename = "name.png",width = 1600, height = 1200,cex.main = 2, cex.axis = 2, cex.lab = 2, mfrow = c(1,1), mar = c(5,4,4,2)+2,...){
+  
+  if(save){
+  png(filename = filename,
+    width = width,
+    height = height,...)
+   par(cex.axis = cex.axis, cex.lab = cex.lab, mfrow = mfrow,mar = mar, cex.main = cex.main)
+  }
+  plotfunction()
+  if(save){dev.off()}
+}
+
+```
+
+
+# Table of Parameters
+
+We see that GRSM, the most visited park, has the greatest constant, which corresponds to the greatest mean visitation.
+
+```{r, message = F}
+options(scipen = 1000)
+nps_parameter_df <- generate_parameter_df(park_visitation, log_flickr_userdays, use_ref_series = TRUE, parameter_estimates = "joint")
+
+full_parameter_df <- data.frame(park = unique(park_visitation$park),
+                     lag_MSE = -nps_parameter_df$lag_MSE, 
+                     lag_Rank = -nps_parameter_df$lag_Rank,
+                     true_beta = nps_parameter_df$beta,
+                     constant = nps_parameter_df$constant,
+                     ci1_cFi = 1/nps_parameter_df$constant
+)
+
+#full_parameter_df <- full_parameter_df %>% arrange(desc(constant)) 
+
+full_parameter_df 
+
+ktable <- full_parameter_df %>% transmute(park = park,
+                                          b = round(true_beta,3),
+                                       c = round(constant*10^-8,3),
+                                       cc = round(ci1_cFi,3))
+
+#mean_visitors <- park_visitation %>% group_by(park) %>% summarize(mean_visitation = mean(nps)) %>% arrange(desc(mean_visitation))
+#full_parameter_df <- right_join(full_parameter_df,mean_visitors, by = "park")
+
+#hist(full_parameter_df$ci1_cFi, main = "Histogram of c_{i,1}*c_{F,i}", breaks = 20)
+
+knitr::kable(full_parameter_df, col.names = c("Park","Lag (MSE)", "Lag (Rank)","Beta (NPS assisted)","Constant","ci1*cFi"),digits = 10)
+
+
+#plot(full_parameter_df$constant~full_parameter_df$mean_visitation, main = "Constant c_i by Mean Visitation", ylab = "Constant", xlab = "Mean Visitation")
+
+```
+
+# Relationships with other parameters
+
+I don't see much of a relationship with other parameters.
+
+```{r}
+
+plot(full_parameter_df$lag_MSE~full_parameter_df$constant, main = "Lag MSE vs c_i")
+plot(full_parameter_df$lag_Rank~full_parameter_df$constant, main = "Lag Rank vs c_i")
+
+plot(full_parameter_df$lag_MSE~full_parameter_df$ci1_cFi, main = "Lag MSE vs 1/c_i")
+plot(full_parameter_df$lag_Rank~full_parameter_df$ci1_cFi, main = "Lag MSE vs 1/c_i")
+
+plot(full_parameter_df$true_beta~full_parameter_df$constant, main = "Beta (NPS Assisted) vs c_i")
+plot(full_parameter_df$true_beta~full_parameter_df$ci1_cFi, main = "Beta (NPS Assisted) vs 1/c_i")
+
+```
+
+# Some plots demonstrating an interpretation of $c_{i,1}c_{F,i}$
+
+This quantity should be the scaling factor that scales flickr user-days trend to obtain the proportion of NPS visitators that post a photo on flickr on a given day.
+
+
+```{r}
+scaled_constant_plots <- function(){
+demo_parks <- c("GRSM","YELL","YOSE","DEVA")
+par(mfrow = c(2,2))
+for(i in seq_along(demo_parks)){
+park <- demo_parks[[i]]
+
+scaling <- full_parameter_df[full_parameter_df$park == park,"ci1_cFi"]
+
+ud_trend <- auto_decompose(flickr_userdays)$reconstruction$Trend
+
+scaled_ud_trend <- ud_trend*scaling
+pud_nps_ratio <- park_visitation[park_visitation$park == park,]$pud/ park_visitation[park_visitation$park == park,]$nps
+pud_nps_ratio <- ts(pud_nps_ratio, start = time(scaled_ud_trend)[1], frequency = frequency(scaled_ud_trend))
+
+plot(pud_nps_ratio, main = bquote("P"["i,t"]*"/N"["i,t"]*" and "*"c"["i,1"]*"c"["F,i"]*"F"["i,t"]*" for "*.(park)),
+     ylab = "Value", lwd = 2)
+lines(scaled_ud_trend, col = "red", lwd = 2)
+legend("topleft",c("Scaled UD Trend","PUD / NPS"), lty = c(1,1), col = c("black","red"), lwd = c(2,2), cex = 2)
+}
+}
+
+build_plot(scaled_constant_plots,filename = "park_constant_plots.png",save = T, cex.main = 3)
+
+```
+
+
+
+
+
+

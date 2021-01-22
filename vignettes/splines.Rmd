@@ -1,0 +1,334 @@
+---
+title: "splines"
+output: 
+  rmarkdown::html_vignette:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{splines}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+We explore smoothing splines in terms of estimating the derivatives needed for the `estimate_lag()` function.
+
+## Evaluation of new procedures
+
+Here we describe three statistics to evaluate the quality of new methods. Two desirable properties of new lags estimates are:
+
+1. Close agreement with the current lag estimates
+    i) This can be measured by taking the mean squared difference between the current lag estimates and new lag estimates
+
+2. Linearity between lags obtained using Google Trends and those obtained Flickr-Userdays.
+    i) Intuitively, the slope should be 1. Therefore we consider the t-test statistic which tests the hypothesis that the slope is 1. 
+    ii) For a good fit, one expects a large $R^2$ value.
+
+## Methods
+
+We use `smooth.spline()` for all fits. In terms of candidate degrees of freedom for the smooth spline, note that different lags result in different numbers of available observations. Since there are 156 observations, if we consider lags in the range -36:36, that means that the largest common degree of freedom can be 120. Therefore, we will consider integer degrees of freedom ranging [2,120]. We also consider using fewer knots: 5 knots, 10 knots, 20 knots, or at all observations.
+
+For mse-based and rank-based estimates separately, and for each candidate degree of freedom, we compute statistics in 1i), 2i), and 2ii) using smooth splines. Note the model in 2 means fitting `google trends lags ~ flickr userdays lags`. We then examine optimal values.
+
+
+First, we load the data:
+```{r}
+library(VisitorCounts)
+library(natlparkAnalysis)
+
+data(flickr_userdays)
+data(gtrends_popularity)
+data(park_visitation)
+
+flickr_userdays_trend <- auto_decompose(log(flickr_userdays))$reconstruction$Trend
+gtrends_trend <- auto_decompose(log(gtrends_popularity))$reconstruction$Trend
+
+log_flickr_userdays <- log(flickr_userdays)
+log_gtrends_popularity <- log(gtrends_popularity)
+#plot(flickr_userdays_trend, main = "US flickr userdays")
+#plot(gtrends_trend, main = "Google Trends trend")
+```
+
+Then, we generate a dataframe containing the parameters using the 7th degree polynomial fit:
+
+```{r, message = F}
+parameter_df <- generate_parameter_df(park_visitation, log_flickr_userdays, use_ref_series = F, spline = F, leave_off = 6)
+g_parameter_df <- generate_parameter_df(park_visitation, log_gtrends_popularity, use_ref_series = F, spline = F, leave_off = 6)
+
+```
+
+Finally, we compute the above results (the code is hidden because it is a bit lengthy):
+
+```{r, eval = FALSE, echo = F}
+
+candidate_df <- 2:120
+candidate_knots <- c(5,10,20) 
+
+n_dfs <- length(candidate_df)
+
+
+dataframe_names <- c("five","ten","twenty","all")
+
+
+results_dataframe <- data.frame(all = numeric(n_dfs))
+results_dataframe[,dataframe_names] <-  numeric(n_dfs)
+results_dataframe <- results_dataframe[,dataframe_names]
+
+mean_difference_MSE <- results_dataframe
+mean_difference_Rank <- results_dataframe
+g_mean_difference_MSE <- results_dataframe
+g_mean_difference_Rank <- results_dataframe
+
+p_value_MSE <- results_dataframe
+p_value_Rank <- results_dataframe
+
+r_sq_MSE <- results_dataframe
+r_sq_Rank <- results_dataframe
+
+for(i in seq_along(candidate_knots)){
+  for(j in seq_along(candidate_df)){
+    
+ print(c(i,j))
+
+  current_parameters <- suppressMessages(generate_parameter_df(park_visitation,log_flickr_userdays,use_ref_series = F,spline = T,leave_off = 0,df = candidate_df[[j]], nknots = candidate_knots[[i]]))
+    
+    g_current_parameters <- suppressMessages(generate_parameter_df(park_visitation,log_gtrends_popularity,use_ref_series = F,spline = T,leave_off = 0,df = candidate_df[[j]], nknots = candidate_knots[[i]]))
+    
+    
+    mean_difference_MSE[j,i] <- mean((current_parameters$lag_MSE - parameter_df$lag_MSE)^2)
+    mean_difference_Rank[j,i] <- mean((current_parameters$lag_Rank - parameter_df$lag_Rank)^2)
+    
+    g_mean_difference_MSE[j,i] <- mean((g_current_parameters$lag_MSE - g_parameter_df$lag_MSE)^2)
+    g_mean_difference_Rank[j,i] <- mean((g_current_parameters$lag_Rank - g_parameter_df$lag_Rank)^2)
+    
+    lm_MSE <- lm(g_current_parameters$lag_MSE~current_parameters$lag_MSE+offset(current_parameters$lag_MSE))
+    p_value_MSE[j,i] <- summary(lm_MSE)$coefficients[2,4]
+    r_sq_MSE[j,i] <- summary(lm_MSE)$r.squared
+    
+    lm_Rank <- lm(g_current_parameters$lag_Rank~current_parameters$lag_Rank+offset(current_parameters$lag_Rank))
+    p_value_Rank[j,i] <- summary(lm_Rank)$coefficients[2,4]
+    r_sq_Rank[j,i] <- summary(lm_Rank)$r.squared
+    
+  
+  }
+}
+
+i = 4
+for(j in seq_along(candidate_df)){
+  
+  print(c(i,j))
+
+  current_parameters <- suppressMessages(generate_parameter_df(park_visitation,log_flickr_userdays,use_ref_series = F,spline = T,leave_off = 0,df = candidate_df[[j]], all.knots = TRUE))
+    
+    g_current_parameters <- suppressMessages(generate_parameter_df(park_visitation,log_gtrends_popularity,use_ref_series = F,spline = T,leave_off = 0,df = candidate_df[[j]], all.knots = TRUE))
+    
+    
+    mean_difference_MSE[j,i] <- mean((current_parameters$lag_MSE - parameter_df$lag_MSE)^2)
+    mean_difference_Rank[j,i] <- mean((current_parameters$lag_Rank - parameter_df$lag_Rank)^2)
+    
+    g_mean_difference_MSE[j,i] <- mean((g_current_parameters$lag_MSE - g_parameter_df$lag_MSE)^2)
+    g_mean_difference_Rank[j,i] <- mean((g_current_parameters$lag_Rank - g_parameter_df$lag_Rank)^2)
+    
+    lm_MSE <- lm(g_current_parameters$lag_MSE~current_parameters$lag_MSE+offset(current_parameters$lag_MSE))
+    p_value_MSE[j,i] <- summary(lm_MSE)$coefficients[2,4]
+    r_sq_MSE[j,i] <- summary(lm_MSE)$r.squared
+    
+    lm_Rank <- lm(g_current_parameters$lag_Rank~current_parameters$lag_Rank+offset(current_parameters$lag_Rank))
+    p_value_Rank[j,i] <- summary(lm_Rank)$coefficients[2,4]
+    r_sq_Rank[j,i] <- summary(lm_Rank)$r.squared
+    
+}
+
+spline_study_results <- list(
+  mean_difference_MSE = mean_difference_MSE,
+  mean_difference_Rank =  mean_difference_Rank,
+  g_mean_difference_MSE=g_mean_difference_MSE,
+  g_mean_difference_Rank=g_mean_difference_Rank,
+  p_value_MSE = p_value_MSE,
+  p_value_Rank = p_value_Rank,
+  r_sq_MSE = r_sq_MSE,
+  r_sq_Rank = r_sq_Rank
+)
+
+```
+
+```{r, echo = F, fig.width = 9, fig.height = 6}
+data(spline_study_results)
+
+candidate_df <- 2:120
+candidate_knots <- c(5,10,20) 
+
+statistic = c("Mean Sq Difference (MSE)", 
+              "Mean Sq Difference (Rank)", 
+              "Mean Sq Difference (Google, MSE)",
+              "Mean Sq Difference (Google, Rank",
+              "p value (MSE)",
+              "p value (Rank)",
+              "R squared (MSE)",
+              "R squared (Rank)")
+
+column_names <- c("Five","Ten","Twenty","All")
+
+### --------------------------------
+
+optimal_parameters_dataframe <- data.frame(
+  statistic = statistic
+)
+
+optimal_parameters_dataframe[1,column_names] <- apply(spline_study_results$mean_difference_MSE,2,function(x){candidate_df[which.min(x)]})
+optimal_parameters_dataframe[2,column_names] <- apply(spline_study_results$mean_difference_Rank,2,function(x){candidate_df[which.min(x)]})
+
+optimal_parameters_dataframe[3,column_names] <- apply(spline_study_results$g_mean_difference_MSE,2,function(x){candidate_df[which.min(x)]})
+optimal_parameters_dataframe[4,column_names] <- apply(spline_study_results$g_mean_difference_Rank,2,function(x){candidate_df[which.min(x)]})
+
+optimal_parameters_dataframe[5,column_names] <- apply(spline_study_results$p_value_MSE,2,function(x){which.max(x)})
+optimal_parameters_dataframe[6,column_names] <- apply(spline_study_results$p_value_Rank,2,function(x){which.max(x)})
+
+optimal_parameters_dataframe[7,column_names] <- apply(spline_study_results$r_sq_MSE,2,function(x){which.max(x)})
+optimal_parameters_dataframe[8,column_names] <- apply(spline_study_results$r_sq_Rank,2,function(x){which.max(x)})
+
+#optimal_parameters_dataframe
+
+### -------------------------------
+
+optimal_values_dataframe <- data.frame(
+  statistic = statistic
+)
+
+optimal_values_dataframe[1,column_names] <- apply(spline_study_results$mean_difference_MSE,2,function(x){min(x)})
+optimal_values_dataframe[2,column_names] <- apply(spline_study_results$mean_difference_Rank,2,function(x){min(x)})
+
+optimal_values_dataframe[3,column_names] <- apply(spline_study_results$g_mean_difference_MSE,2,function(x){min(x)})
+optimal_values_dataframe[4,column_names] <- apply(spline_study_results$g_mean_difference_Rank,2,function(x){min(x)})
+
+optimal_values_dataframe[5,column_names] <- apply(spline_study_results$p_value_MSE,2,function(x){max(x)})
+optimal_values_dataframe[6,column_names] <- apply(spline_study_results$p_value_Rank,2,function(x){max(x)})
+
+optimal_values_dataframe[7,column_names] <- apply(spline_study_results$r_sq_MSE,2,function(x){max(x)})
+optimal_values_dataframe[8,column_names] <- apply(spline_study_results$r_sq_Rank,2,function(x){max(x)})
+
+#optimal_values_dataframe
+
+knitr::kable(optimal_values_dataframe)
+knitr::kable(optimal_parameters_dataframe)
+
+plot(x = candidate_df,y = spline_study_results$mean_difference_MSE$all, main = "Mean Sq Difference, MSE method, all knots", type = "l", ylab= "MSE", xlab = "candidate df")
+plot(x = candidate_df,y = spline_study_results$mean_difference_Rank$all, main = "Mean Sq Difference, Rank method, all knots", type = "l", ylab= "MSE", xlab = "candidate df")
+plot(x = candidate_df,y = spline_study_results$g_mean_difference_MSE$all, main = "Google Trends Mean Sq Difference, Rank method, all knots", type = "l", ylab= "MSE", xlab = "candidate df")
+plot(x = candidate_df,y = spline_study_results$g_mean_difference_Rank$all, main = "Google Trends Mean Sq Difference, Rank method, all knots", type = "l", ylab= "MSE", xlab = "candidate df")
+```
+
+## Discussion
+
+
+Some observations:
+
+* The minimum MSE is achieved at around 7-10, regardless of how many knots there are. While we could achieve similar results using the flicker userdays trend, it was more challenging to obtain similar results for google trends.
+* Using a smaller number of knots, like 5 or 10, is almost as good as this minimum MSE. 
+* The flickr userdays lags can get very close to our previous analysis with an mean squared difference of about 3, but google trends is a bit further with an MSD of about 10.
+* R squared and p value measurements seem to be greatest for less flexible models in general. However, visually I do not really trust the least flexible models, so I'm not sure how useful these really are. However, for the Rank based method, the p value was reasonable for 6 or 7 degrees of freedom, with p values $>0.25$. Since these also w
+
+
+
+
+## Some Exploratory Results (How do parameter values change what "looks" reasonable)
+
+Though I had thought about natural cubic splines as an option, exploratory results indicate the fit would not be very smooth, because these are more flexible fits. (In particular, see the plots in the toy example section.) If there is much noise at all I am not sure that I would choose a very high degrees of freedom or use natural cubic splines.
+
+Highly flexible fits visually don't visually look very good in terms of derivatives. Degrees of freedom near 10 seem visually appropriate if there is no restriction on number of knots. With fewer knots, higher degrees of freedom may be more appropriate. I'm not sure these methods are very good if the number of derivatives is more than 1.
+
+```{r, fig.width = 9, fig.height = 6}
+library(VisitorCounts)
+library(natlparkAnalysis)
+
+data(flickr_userdays)
+data(gtrends_popularity)
+
+flickr_userdays_trend <- auto_decompose(log(flickr_userdays))$reconstruction$Trend
+gtrends_trend <- auto_decompose(log(gtrends_popularity))$reconstruction$Trend
+
+plot(flickr_userdays_trend, main = "US flickr userdays")
+plot(gtrends_trend, main = "Google Trends trend")
+
+spline_plots <- function(data,...){
+x <- predict(smooth.spline(data, ...),deriv = 0)
+plot(x, type = "l", main = paste(c(match.call())))
+lines(data, col = "red")
+  
+for(i in 1:2){
+  x <- predict(smooth.spline(data,...),deriv = i)
+  plot(x, type = "l", main = paste(c(match.call()),"deriv = ",i))
+}
+  
+}
+
+spline_plots(data = gtrends_trend, df = 10, all.knots = T)
+spline_plots(data = gtrends_trend, df  = 100, nknots = 5)
+
+
+```
+
+## Additional Visualizations for different parameter values
+
+```{r, fig.height = 6, fig.width = 9}
+
+spline_plots(data = gtrends_trend, df  = 3, nknots = 5)
+spline_plots(data = gtrends_trend, df  = 10, nknots = 5)
+spline_plots(data = gtrends_trend, df  = 100, nknots = 5)
+
+spline_plots(data = gtrends_trend, df  = 3, all.knots = T)
+spline_plots(data = gtrends_trend, df  = 10, all.knots = T)
+spline_plots(data = gtrends_trend, df  = 100,  all.knots = T)
+
+```
+
+## Natural Cubic Splines
+
+```{r, fig.width =9, fig.height = 6}
+data <- gtrends_trend
+
+x <- 1:length(data)/length(data)
+
+new_spline <- splinefun(x,data,method = "natural")
+plot(new_spline(x,deriv = 0), type = "l", main = "Natural Cubic Spline")
+lines(data, col = "red")
+  
+for(i in 1:2){
+ plot(new_spline(x,deriv = i), type = "l", main = paste("deriv = ",i))
+}
+```
+
+
+## Toy Example: $X^3$+noise
+
+The `smooth.spline()` function can be tuned using both `df` and `nknots` parameters. Flexibility of the fit increases with both parameters. 
+
+```{r, fig.width = 9, fig.height = 6}
+n <- 100
+sigma <- 1/50
+x <- seq(-1,1,length.out = n)
+y <- x^3+rnorm(n,0,sigma)
+
+deriv_df <- data.frame(true_deriv0 = x^3,
+                       true_deriv1 = 3*x^2,
+                       true_deriv2 = 6*x,
+                       true_deriv3 = 6)
+
+spline_plots(y,df = 10)
+spline_plots(y,df = 100)
+
+
+data <- y
+x <- 1:length(data)/length(data)
+
+new_spline <- splinefun(x,data,method = "natural")
+plot(new_spline(x,deriv = 0), type = "l", main = "Natural Cubic Spline")
+lines(data, col = "red")
+  
+for(i in 1:2){
+ plot(new_spline(x,deriv = i), type = "l", main = paste("deriv = ",i))
+}
+
+
+
+```
+
+

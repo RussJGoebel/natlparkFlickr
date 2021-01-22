@@ -14,7 +14,7 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.width = 7,fig.height =5, fig.align = "center"
-)
+) 
 ```
 
 The goal of this vignette is to reproduce figures in *Modeling and Forecasting Percent Changes in National Park Visitation Using Social Media* using the VisitorCounts package. Figures are designed to be saved as png files, so some may not render correctly in this html file.
